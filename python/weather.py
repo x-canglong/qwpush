@@ -31,23 +31,19 @@ def _load_dotenv():
 _load_dotenv()
 
 # ==================== 配置（优先从环境变量读取，与 .env 一致）====================
-LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen-plus-latest")
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL")
+LLM_MODEL = os.getenv("LLM_MODEL")
 
 # 高德 Web 服务（天气、地理编码），key 可从 MCP 地址中取或单独配置
-AMAP_KEY = os.getenv("AMAP_KEY", "6e8adef5ac410048365f0ebc2c246843")
-AMAP_WEATHER_URL = "https://restapi.amap.com/v3/weather/weatherInfo"
-AMAP_GEO_URL = "https://restapi.amap.com/v3/geocode/geo"
+AMAP_KEY = os.getenv("AMAP_KEY")
+AMAP_WEATHER_URL = os.getenv("AMAP_WEATHER_URL")
+AMAP_GEO_URL = os.getenv("AMAP_GEO_URL")
 
 # 企业微信：优先使用完整 WECHAT_WEBHOOK，否则用 key 拼接
-WECHAT_WEBHOOK = os.getenv("WECHAT_WEBHOOK", "")
-if not WECHAT_WEBHOOK:
-    key = os.getenv("WECHAT_WEBHOOK_KEY", "ce521b26-fe83-4af1-bfb6-81c9ada1326a")
-    WECHAT_WEBHOOK = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={key}"
-
-CITY = os.getenv("WEATHER_CITY", "浦东新区高行镇")
-MENTION_ALL = os.getenv("WEATHER_MENTION_ALL", "false").lower() in ("1", "true", "yes")
+WECHAT_WEBHOOK = os.getenv("WECHAT_WEBHOOK_WEATHER")
+CITY = os.getenv("WEATHER_CITY")
+MENTION_ALL = os.getenv("WEATHER_MENTION_ALL").lower() in ("1", "true", "yes")
 # ================================================================
 
 
@@ -149,7 +145,7 @@ def get_weather_from_llm():
 
 请按以下 Markdown 结构生成【天气早报】：
 
-## 🌤️ {CITY}今日天气报告 · {date_str}
+## 🌤️ 森兰国际大厦今日天气报告 · {date_str}
 
 **📍 天气概况**
 （天气、气温、风、湿度等）
@@ -157,7 +153,7 @@ def get_weather_from_llm():
 **👔 穿衣与出行**
 （1-2 句：穿衣建议、是否带伞、出行注意）
 
-要求：语言简短清晰，带少量表情，数据必须来自上述天气数据或标注为待查。"""
+要求：语言简短清晰，带少量表情，最后加一句温暖的祝福语，数据必须来自上述天气数据或标注为待查。"""
 
     chat_url = f"{LLM_BASE_URL}/chat/completions"
     headers = {
@@ -240,7 +236,7 @@ def main():
         sys.exit(1)
 
     if not weather_message.startswith("#"):
-        weather_message = f"## 🌤️ {CITY}今日天气报告\n\n{weather_message}"
+        weather_message = f"## 🌤️ 森兰国际大厦今日天气报告\n\n{weather_message}"
 
     print("\n📤 正在发送到企业微信群...")
     print(weather_message)
