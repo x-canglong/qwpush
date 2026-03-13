@@ -1,18 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-企业微信天气机器人 - 阿里云百炼 + 高德天气
-功能：通过高德天气 API 查询实时天气，百炼大模型生成报告并推送至企业微信群
-"""
-
 import requests
 import json
 from datetime import datetime
 import os
 import sys
 
-# 加载项目根目录 .env（不依赖 python-dotenv）
 def _load_dotenv():
     for d in [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]:
         path = os.path.join(d, ".env")
@@ -30,27 +21,21 @@ def _load_dotenv():
 
 _load_dotenv()
 
-# ==================== 配置（优先从环境变量读取，与 .env 一致）====================
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL")
 LLM_MODEL = os.getenv("LLM_MODEL")
-
-# 高德 Web 服务（天气、地理编码），key 可从 MCP 地址中取或单独配置
 AMAP_KEY = os.getenv("AMAP_KEY")
 AMAP_WEATHER_URL = os.getenv("AMAP_WEATHER_URL")
 AMAP_GEO_URL = os.getenv("AMAP_GEO_URL")
-
-# 企业微信：优先使用完整 WECHAT_WEBHOOK，否则用 key 拼接
-WECHAT_WEBHOOK = os.getenv("WECHAT_WEBHOOK_WEATHER")
+WECHAT_WEBHOOK_BASE_URL = os.getenv("WECHAT_WEBHOOK_BASE_URL")
+WEATHER_KEY = os.getenv("WEATHER_KEY")
 CITY = os.getenv("WEATHER_CITY")
 MENTION_ALL = os.getenv("WEATHER_MENTION_ALL").lower() in ("1", "true", "yes")
-# ================================================================
-
+DEBUGGER_WEATHER = os.getenv("DEBUGGER_WEATHER").lower() in ("1", "true", "yes")
 
 def get_current_time():
     """获取当前时间字符串"""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
 
 def _amap_city_to_adcode(city_name):
     """高德地理编码：城市名 -> adcode，失败返回 None"""
@@ -70,7 +55,6 @@ def _amap_city_to_adcode(city_name):
     except Exception as e:
         print(f"❌ 高德地理编码失败: {e}")
         return None
-
 
 def get_weather_from_amap(city_name):
     """
@@ -115,7 +99,6 @@ def get_weather_from_amap(city_name):
         print(f"❌ 高德天气调用失败: {e}")
         return None
 
-
 def get_weather_from_llm():
     """
     先通过高德天气 API 查实时天气，再交给阿里云百炼生成 Markdown 报告。
@@ -133,27 +116,32 @@ def get_weather_from_llm():
         search_context = f"\n\n⚠️ 未获取到实时天气数据，请基于 {date_str} {CITY} 给出合理的天气与出行提示。"
 
     system_prompt = (
-        "你是一个简洁的天气早报助手，只输出纯 Markdown 格式的企业微信群消息，不要任何解释、前缀、后缀。"
-        "必须基于提供的实时天气数据生成内容；若无某项可标注「待查」或合理推断。"
+        "你是一个亲切、简洁的企业微信天气早报助手，只输出纯 Markdown 格式的消息，"
+        "不要出现任何解释、思考过程、前缀、后缀或代码块标记。严格按照用户指定的结构和语气生成。"
     )
-    user_prompt = f"""请基于以下高德实时天气数据，生成今天（{date_str}）{CITY}的天气早报。
-
-需要包含：
-- 今日天气、气温、风向风力、湿度
-- 穿衣与出行建议（是否带伞、增减衣物）
-{search_context}
-
-请按以下 Markdown 结构生成【天气早报】：
-
-## 🌤️ 森兰国际大厦今日天气报告 · {date_str}
-
-**📍 天气概况**
-（天气、气温、风、湿度等）
-
-**👔 穿衣与出行**
-（1-2 句：穿衣建议、是否带伞、出行注意）
-
-要求：语言简短清晰，带少量表情，最后加一句温暖的祝福语，数据必须来自上述天气数据或标注为待查。"""
+    user_prompt = f"""请基于以下高德实时天气数据，为森兰团队生成今天（{date_str}）{CITY}的天气早报。
+                高德实时天气数据如下：
+                {search_context}
+                
+                请严格按照以下格式和风格输出（注意顺序、emoji使用、语气温暖活泼）：
+                ## 森兰今日天气预报（{date_str}）
+                天气状况：XXX  
+                气温范围：X°C ~ X°C  
+                体感温度：约X°C（可选补充早晚感受）  
+                风力风向：XXX风 X-X级  
+                湿度范围：X% ~ X%（可选补充早晚变化）  
+                紫外线强度：XXX（UV Index X，可选
+                🌤️ 今日森兰天气XXX，XXX，是XXX的好日子！（1-2句总体感受 + 1个小提醒）
+                👕 穿衣建议：建议穿XXX，搭配XXX，既XXX又XXX。（简洁1句）
+                🚶 出行提示：天气XXX，建议XXX，注意XXX。（1-2句实用建议，提到是否带伞、防晒、补水、温差等）
+                愿大家今天XXX，心情愉快，XXX！🌸☀️（温暖祝福，带1-2个表情）
+                要求：
+                - 所有数据必须来自高德提供的信息，若某项缺失可写“暂无”或合理推测但标注
+                - 语言亲切、自然，像在和同事聊天
+                - 控制总长度适中，便于企业微信阅读
+                - 不要输出标题以外的任何 Markdown 层级标题（不要用 ## 或 ###）
+                - 直接从“森兰今日天气预报”开始输出
+                """
 
     chat_url = f"{LLM_BASE_URL}/chat/completions"
     headers = {
@@ -167,7 +155,7 @@ def get_weather_from_llm():
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.5,
-        "max_tokens": 800,
+        "max_tokens": 2000,
     }
 
     try:
@@ -190,8 +178,8 @@ def send_to_wechat(message):
     if not message:
         print("❌ 消息内容为空，取消发送")
         return False
-    if not WECHAT_WEBHOOK:
-        print("❌ 未配置 WECHAT_WEBHOOK 或 WECHAT_WEBHOOK_KEY")
+    if not WECHAT_WEBHOOK_BASE_URL or not WEATHER_KEY:
+        print("❌ 未配置 WECHAT_WEBHOOK_BASE_URL 或 WEATHER_KEY")
         return False
 
     try:
@@ -205,7 +193,7 @@ def send_to_wechat(message):
 
         headers = {"Content-Type": "application/json"}
         response = requests.post(
-            WECHAT_WEBHOOK,
+            f"{WECHAT_WEBHOOK_BASE_URL}?key={WEATHER_KEY}",
             headers=headers,
             data=json.dumps(wechat_message, ensure_ascii=False).encode("utf-8"),
             timeout=10,
@@ -236,12 +224,15 @@ def main():
         sys.exit(1)
 
     if not weather_message.startswith("#"):
-        weather_message = f"## 🌤️ 森兰国际大厦今日天气报告\n\n{weather_message}"
+        weather_message = f"## 🌤️ 森兰今日天气报告\n\n{weather_message}"
 
     print("\n📤 正在发送到企业微信群...")
-    print(weather_message)
-    # success = send_to_wechat(weather_message)
-    success = True
+
+    if DEBUGGER_WEATHER:
+        print(weather_message)
+        success = True
+    else:
+        success = send_to_wechat(weather_message)
 
     if success:
         print("\n🎉 任务执行成功！")
